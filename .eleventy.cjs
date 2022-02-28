@@ -79,7 +79,7 @@ module.exports = function(eleventyConfig) {
 
     const todos = [];
 
-    const files = await glob('{elements,core,tools}/**/*[!.spec].ts', {
+    const files = await glob('elements/**/*[!.spec].ts', {
       ignore: '**/node_modules/**/*',
     });
 

@@ -17,8 +17,6 @@ module.exports = {
       'docs',
       'scripts',
       ...normalizeWorkspace('elements'),
-      ...normalizeWorkspace('core'),
-      ...normalizeWorkspace('tools'),
     ]],
   }
 };
