@@ -1,5 +1,5 @@
 import { html, render } from 'lit';
-import { core, elements } from '@patternfly/pfe-tools/environment.js';
+import { elements } from '@patternfly/pfe-tools/environment.js';
 import { URLPattern } from 'urlpattern-polyfill';
 import { installRouter } from 'pwa-helpers/router.js';
 
@@ -50,7 +50,7 @@ async function go(location = window.location) {
   const { element } = pattern.exec(location.href)?.pathname?.groups ?? {};
 
   if (element) {
-    const base = element.match(/^pfe-(core|sass|styles)$/) ? 'core' : 'elements';
+    const base = 'elements';
     include.classList.add('loading');
     componentHeader.classList.add('loading');
     include.addEventListener('load', onLoad.bind(include, element, base, location), { once: true });
@@ -96,8 +96,6 @@ const li = (element: string) => html`
 `;
 
 render([
-  ...core.map(li),
-  html`<li class="separator"></li>`,
   ...elements.map(li),
 ], document.getElementById('elements-container'));
 
