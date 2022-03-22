@@ -3,6 +3,11 @@ import { elements } from '@patternfly/pfe-tools/environment.js';
 import { URLPattern } from 'urlpattern-polyfill';
 import { installRouter } from 'pwa-helpers/router.js';
 
+import 'html-include-element';
+import 'api-viewer-element';
+import '@vaadin/split-layout';
+import '@patternfly/pfe-band';
+
 const pattern = new URLPattern({ pathname: '/demo/:element/' });
 const include = document.querySelector<HTMLElement & { src?: string }>('html-include');
 const hamburger = document.getElementById('hamburger');
