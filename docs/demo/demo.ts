@@ -1,12 +1,11 @@
-import { html, render } from 'lit';
-import { elements } from '@patternfly/pfe-tools/environment.js';
-import { URLPattern } from 'urlpattern-polyfill';
-import { installRouter } from 'pwa-helpers/router.js';
-
-import 'html-include-element';
+import { HTMLIncludeElement } from 'html-include-element';
 import 'api-viewer-element';
 import '@vaadin/split-layout';
-import '@patternfly/pfe-band';
+
+import { html, render } from 'lit';
+import { core, elements } from '@patternfly/pfe-tools/environment.js';
+import { URLPattern } from 'urlpattern-polyfill';
+import { installRouter } from 'pwa-helpers/router.js';
 
 const pattern = new URLPattern({ pathname: '/demo/:element/' });
 const include = document.querySelector<HTMLElement & { src?: string }>('html-include');
@@ -37,7 +36,7 @@ function pretty(tagName: string): string {
  * Load demo scripts and scroll to element with id in the URL hash.
  * @this {HTMLElement}
  */
-async function onLoad(element: string, base: 'elements', location: Location) {
+async function onLoad(element: string, base: 'core' | 'elements', location: Location) {
   // not every demo has a script
   // eslint-disable-next-line no-console
   await import(`/${base}/${element}/demo/${element}.js`).catch(console.error.bind(console, element));
@@ -50,12 +49,99 @@ async function onLoad(element: string, base: 'elements', location: Location) {
   onContextChange();
 }
 
+async function patchHTMLIncludes() {
+  /* eslint-disable no-console */
+  /**
+   * quick hack to avoid page load errors if subresources are missing from demo files
+   * @see https://github.com/justinfagnani/html-include-element/pull/21
+   */
+  if (!HTMLIncludeElement.prototype.attributeChangedCallback.toString().includes('await Promise.all([...this.shadowRoot.querySelectorAll')) {
+    console.info('No need to patch <html-include>');
+  } else {
+    console.info('Patching <html-include>');
+    await customElements.whenDefined('html-include');
+    const isLinkAlreadyLoaded = (link: HTMLLinkElement) => {
+      try {
+        return !!(link.sheet && link.sheet.cssRules);
+      } catch (error) {
+        if (error.name === 'InvalidAccessError' || error.name === 'SecurityError') {
+          return false;
+        } else {
+          throw error;
+        }
+      }
+    };
+
+    const linkLoaded = async function linkLoaded(link: HTMLLinkElement) {
+      return new Promise((resolve, reject) => {
+        if (!('onload' in HTMLLinkElement.prototype)) {
+          resolve(null);
+        } else if (isLinkAlreadyLoaded(link)) {
+          resolve(link.sheet);
+        } else {
+          link.addEventListener('load', () => resolve(link.sheet), { once: true });
+          link.addEventListener('error', () => reject({ link }), { once: true });
+        }
+      });
+    };
+
+    HTMLIncludeElement.prototype.attributeChangedCallback = async function attributeChangedCallback(name: string, _: string, newValue: string) {
+      if (name === 'src') {
+        let text = '';
+        try {
+          const mode = this.mode || 'cors';
+          const response = await fetch(newValue, { mode });
+          if (!response.ok) {
+            throw new Error(`html-include fetch failed: ${response.statusText}`);
+          }
+          text = await response.text();
+          if (this.src !== newValue) {
+            // the src attribute was changed before we got the response, so bail
+            return;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+        // Don't destroy the light DOM if we're using shadow DOM, so that slotted content is respected
+        if (this.noShadow) {
+          this.innerHTML = text;
+        }
+        this.shadowRoot.innerHTML = `
+          <style>
+            :host {
+              display: block;
+            }
+          </style>
+          ${this.noShadow ? '<slot></slot>' : text}
+        `;
+
+        // If we're not using shadow DOM, then the consuming root
+        // is responsible to load its own resources
+        if (!this.noShadow) {
+          const results = await Promise.allSettled([...this.shadowRoot.querySelectorAll('link')].map(linkLoaded));
+          for (const result of results) {
+            if (result.status === 'rejected') {
+              const { link } = result.reason;
+              const message = `Could not load ${link.href}`;
+              console.error(message);
+            }
+          }
+        }
+
+        this.dispatchEvent(new Event('load'));
+      }
+    };
+  }
+  /* eslint-enable no-console */
+}
+
 /** Load up the requested element's demo in a separate shadow root */
 async function go(location = window.location) {
+  await patchHTMLIncludes();
   const { element } = pattern.exec(location.href)?.pathname?.groups ?? {};
 
   if (element) {
-    const base = 'elements';
+    const base = element.match(/^pfe-(core|sass|styles)$/) ? 'core' : 'elements';
     include.classList.add('loading');
     componentHeader.classList.add('loading');
     include.addEventListener('load', onLoad.bind(include, element, base, location), { once: true });
@@ -63,9 +149,9 @@ async function go(location = window.location) {
     include.src = `/${base}/${element}/demo/${element}.html`;
     viewer.src = `/${base}/${element}/custom-elements.json`;
     viewer.hidden = false;
-    document.title = `${pretty(element)} | scope/repo Elements`;
+    document.title = `${pretty(element)} | PatternFly Elements`;
     document.querySelector('h1').textContent = `<${element}>`;
-    github.href = `https://github.com/scope/repo/tree/main/${base}/${element}`;
+    github.href = `https://github.com/patternfly/patternfly-elements/tree/main/${base}/${element}`;
     toggleNav(false);
   } else {
     viewer.src = '';
@@ -101,6 +187,8 @@ const li = (element: string) => html`
 `;
 
 render([
+  ...core.map(li),
+  html`<li class="separator"></li>`,
   ...elements.map(li),
 ], document.getElementById('elements-container'));
 
@@ -110,7 +198,7 @@ go();
 
 form.addEventListener('submit', e => e.preventDefault());
 
-context.addEventListener('select', onContextChange);
+context.addEventListener('pfe-select:change', onContextChange);
 hamburger.addEventListener('click', toggleNav);
 document.addEventListener('click', event => {
   if (hamburger.getAttribute('aria-expanded') === 'true') {
@@ -134,3 +222,4 @@ nav.addEventListener('keydown', event => {
     }
   }
 });
+
